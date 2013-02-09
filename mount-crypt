@@ -1,0 +1,40 @@
+#!/bin/bash
+
+ME="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
+
+( command -v cryptsetup >/dev/null 2>&1 ) || {
+    echo "${ME}: cryptsetup is required" >&2
+    exit 1
+}
+
+if [ $# -lt 2 ]; then
+    echo "Usage: ${ME} device node" >&2
+    exit 1
+fi
+
+if [ $EUID -ne 0 ]; then
+    echo "${ME}: only root can do that" >&2
+    exit 1
+fi
+
+DEV=$1
+MNT=$2
+DEN=$(echo "$DEV"|perl -n -e'/(sd[a-z][0-9]+)$/ && print $1')
+
+if [ "$DEN" == "" ]; then
+    echo "${ME}: ${DEV} is no valid device" >&2
+    exit 1
+fi
+
+ERR=$(cryptsetup luksOpen "${DEV}" "${DEN}_crypt" 2>&1)
+if [ $? -ne 0 ]; then
+    echo "${ME}: ${ERR}" >&2
+    exit 2
+else
+    ERR=$(mount "/dev/mapper/${DEN}_crypt" "${MNT}" 2>&1)
+    if [ $? -ne 0 ]; then
+        echo "${ME}: ${ERR}" >&2
+        exit 3
+    fi
+fi
+

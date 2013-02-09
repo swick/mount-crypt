@@ -1,0 +1,48 @@
+#!/bin/bash
+
+ME="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
+
+( command -v cryptsetup >/dev/null 2>&1 ) || {
+    echo "${ME}: cryptsetup is required" >&2
+    exit 1
+}
+
+if [ $# -lt 1 ]; then
+    echo "Usage: ${ME} node" >&2
+    exit 1
+fi
+
+if [ $EUID -ne 0 ]; then
+    echo "${ME}: only root can do that" >&2
+    exit 1
+fi
+
+MNT=$(readlink -f "$1")
+PTH=$(mount|grep "\s${MNT}\s"|cut -f1 -d' ')
+
+if [ "$PTH" == "" ]; then
+    echo "${ME}: ${MNT} is not mounted" >&2
+    exit 1
+fi
+
+DEV=$(echo "${PTH}"|perl -n -e'/\/dev\/mapper\/(sd[a-z]\d+_crypt)/ && print $1')
+TYP=$(cryptsetup status "$DEV" | grep "type:\s*LUKS")
+
+
+if [ "$DEV" == "" ] || [ "$TYP" == "" ]; then
+    echo "${ME}: ${MNT} is no luks device" >&2
+    exit 1
+fi
+
+RES=$(umount "$MNT" 2>&1)
+if [ $? -ne 0 ]; then
+    echo "${ME}: ${RES}" >&2
+    exit 2
+fi
+
+RES=$(cryptsetup luksClose "$PTH" 2>&1)
+if [ $? -ne 0 ]; then
+    echo "${ME}: ${RES}" >&2
+    exit 2
+fi
+
